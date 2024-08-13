@@ -1,13 +1,14 @@
+// infiniteScroll.jsx
 import React, { useEffect, useRef } from 'react';
 
-const InfiniteScroll = ({ loadMore, hasMore, loader, children }) => {
+const InfiniteScroll = ({ next, hasMore, loader, children }) => {
   const scrollRef = useRef();
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore) {
-          loadMore();
+          next();
         }
       },
       { threshold: 1.0 }
@@ -22,10 +23,10 @@ const InfiniteScroll = ({ loadMore, hasMore, loader, children }) => {
         observer.unobserve(scrollRef.current);
       }
     };
-  }, [loadMore, hasMore]);
+  }, [next, hasMore]);
 
   return (
-    <div className="overflow-y-auto h-[calc(100vh-200px)]">
+    <div className="h-full overflow-y-auto">
       {children}
       {hasMore && <div ref={scrollRef}>{loader}</div>}
     </div>

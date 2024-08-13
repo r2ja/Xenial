@@ -1,20 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Send, X } from "lucide-react";
-import { Formik, Form, Field } from "formik";
-import * as Yup from "yup";
+import { Search, X } from "lucide-react";
 import PostCard from "../components/postCard";
 import { postApi } from "../utils/postApi";
 import { authApi } from "../utils/authApi";
 import debounce from "lodash/debounce";
 
-const postSchema = Yup.object().shape({
-  content: Yup.string()
-    .required("Post content is required")
-    .max(512, "Post must be 512 characters or less")
-});
-
-const LatestPage = () => {
+const TrendingPage = () => {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -36,25 +28,15 @@ const LatestPage = () => {
     };
 
     checkAuth();
-    loadPosts();
+    loadTrendingPosts();
   }, [navigate]);
 
-  const loadPosts = async () => {
+  const loadTrendingPosts = async () => {
     try {
-      const response = await postApi.getPosts();
+      const response = await postApi.getTrendingPosts();
       setPosts(response.data);
     } catch (error) {
-      console.error("Error fetching posts:", error);
-    }
-  };
-
-  const handlePostSubmit = async (values, { resetForm }) => {
-    try {
-      await postApi.createPost({ content: values.content });
-      resetForm();
-      loadPosts();
-    } catch (error) {
-      console.error("Error creating post:", error);
+      console.error("Error fetching trending posts:", error);
     }
   };
 
@@ -90,7 +72,7 @@ const LatestPage = () => {
   return (
     <div className="flex flex-col h-screen bg-xenial-dark text-white">
       <div className="flex-shrink-0 p-6 border-b border-gray-700">
-        <h2 className="text-3xl font-bold font-heading mb-4">latest</h2>
+        <h2 className="text-3xl font-bold font-heading mb-4">trending</h2>
         <div className="mb-4 relative">
           <input
             type="text"
@@ -107,35 +89,6 @@ const LatestPage = () => {
             />
           )}
         </div>
-        <Formik
-          initialValues={{ content: "" }}
-          validationSchema={postSchema}
-          onSubmit={handlePostSubmit}
-        >
-          {({ errors, touched, isSubmitting }) => (
-            <Form className="mb-6">
-              <div className="relative">
-                <Field
-                  as="textarea"
-                  name="content"
-                  placeholder="tell everyone what's going on..."
-                  className="w-full bg-xenial-gray p-3 pr-10 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-xenial-blue"
-                  rows="2"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-3 bottom-3 text-xenial-blue hover:text-xenial-blue-light disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isSubmitting}
-                >
-                  <Send size={20} />
-                </button>
-              </div>
-              {errors.content && touched.content && (
-                <div className="text-red-500 text-sm mt-1">{errors.content}</div>
-              )}
-            </Form>
-          )}
-        </Formik>
       </div>
       <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-xenial-blue scrollbar-track-xenial-gray">
         <div className="space-y-6 p-6">
@@ -156,4 +109,4 @@ const LatestPage = () => {
   );
 };
 
-export default LatestPage;
+export default TrendingPage;

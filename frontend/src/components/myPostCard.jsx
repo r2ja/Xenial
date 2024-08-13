@@ -1,21 +1,28 @@
-// postCard.jsx
+// MyPostCard.jsx
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageSquare, RefreshCw, Heart } from 'lucide-react';
 import { postApi } from '../utils/postApi';
 import { userApi } from '../utils/userApi';
-import ProfilePopup from './profilePopUp';
 import { authApi } from '../utils/authApi';
 
-const PostCard = ({ post_id, user_id, user_name, avatar_url, content, comments_count, reposts_count, likes_count, created_at, is_repost, reposted_by }) => {
+const MyPostCard = ({ post_id, content, comments_count, reposts_count, likes_count, created_at, is_repost, reposted_by }) => {
   const [likes, setLikes] = useState(parseInt(likes_count));
   const [reposts, setReposts] = useState(parseInt(reposts_count));
   const [isLiked, setIsLiked] = useState(false);
   const [isReposted, setIsReposted] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
-  const [isCurrentUser, setIsCurrentUser] = useState(false);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const userData = await userApi.getCurrentUserProfile();
+        setUser(userData);
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+
     const checkLikeStatus = async () => {
       try {
         const response = await postApi.checkLikeStatus(post_id);
@@ -34,15 +41,10 @@ const PostCard = ({ post_id, user_id, user_name, avatar_url, content, comments_c
       }
     };
 
-    const checkCurrentUser = async () => {
-      const currentUser = authApi.getCurrentUser();
-      setIsCurrentUser(currentUser && currentUser.user_id === user_id);
-    };
-
+    fetchUserData();
     checkLikeStatus();
     checkRepostStatus();
-    checkCurrentUser();
-  }, [post_id, user_id]);
+  }, [post_id]);
 
   const handleLike = async () => {
     try {
@@ -64,6 +66,8 @@ const PostCard = ({ post_id, user_id, user_name, avatar_url, content, comments_c
     }
   };
 
+  if (!user) return null;
+
   return (
     <div className="bg-xenial-gray rounded-lg p-4 w-full font-body relative">
       {is_repost && (
@@ -72,26 +76,20 @@ const PostCard = ({ post_id, user_id, user_name, avatar_url, content, comments_c
         </div>
       )}
       <div className="flex items-start space-x-3">
-        <Link 
-          to={`/user/${user_name}`} 
-          onMouseEnter={() => !isCurrentUser && setShowProfile(true)} 
-          onMouseLeave={() => setShowProfile(false)}
-        >
+        <Link to="/profile">
           <img 
-            src={userApi.getFullAvatarUrl(avatar_url)} 
-            alt={`${user_name}'s avatar`} 
+            src={userApi.getFullAvatarUrl(user.avatar_url)} 
+            alt={`${user.username}'s avatar`} 
             className="w-10 h-10 rounded-full"
           />
         </Link>
         <div className="flex-grow">
           <div className="flex items-center space-x-2">
             <Link 
-              to={`/user/${user_name}`} 
+              to="/profile"
               className="font-bold text-white hover:underline"
-              onMouseEnter={() => !isCurrentUser && setShowProfile(true)} 
-              onMouseLeave={() => setShowProfile(false)}
             >
-              {user_name}
+              {user.username}
             </Link>
             <p className="text-gray-400 text-sm">
               {new Date(created_at).toLocaleString()}
@@ -120,13 +118,8 @@ const PostCard = ({ post_id, user_id, user_name, avatar_url, content, comments_c
           <span>{likes}</span>
         </button>
       </div>
-      {showProfile && !isCurrentUser && (
-        <div className="absolute left-0 mt-2 z-10">
-          <ProfilePopup username={user_name} />
-        </div>
-      )}
     </div>
   );
 };
 
-export default PostCard;
+export default MyPostCard;
