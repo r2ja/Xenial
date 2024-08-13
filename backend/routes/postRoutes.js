@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateJWT } = require('../middleware/auth');
+
 
 /**
  * @swagger
@@ -124,21 +126,14 @@ router.get('/', async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.post('/', async (req, res) => {
+router.post('/', authenticateJWT, async (req, res) => {
   try {
-    // Ensure the user is authenticated
-    if (!req.user || !req.user.user_id) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { content } = req.body;
     
-    // Validate content
-    if (!content || content.trim() === '') {
-      return res.status(400).json({ error: 'Post content is required' });
+    if (!content || content.trim() === '' || content.length > 512) {
+      return res.status(400).json({ error: 'Post content must be between 1 and 512 characters' });
     }
 
-    // Insert the new post
     const { rows } = await req.app.locals.db.query(
       `INSERT INTO posts (user_id, content) 
        VALUES ($1, $2) 
@@ -148,7 +143,6 @@ router.post('/', async (req, res) => {
       [req.user.user_id, content]
     );
 
-    // Add counts to the returned post object
     const postWithCounts = {
       ...rows[0],
       likes_count: 0,
@@ -310,5 +304,160 @@ router.get('/search', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+/**
+ * @swagger
+ * /api/posts/trending:
+ *   get:
+ *     summary: Retrieve a list of trending posts
+ *     tags: [Posts]
+ *     description: Retrieve a list of trending posts from the database. The list is sorted by a combination of likes, comments, and reposts counts in descending order.
+ *     responses:
+ *       200:
+ *         description: A list of trending posts.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Post'
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/trending', async (req, res) => {
+  try {
+    const { rows } = await req.app.locals.db.query(`
+      SELECT p.*, u.username as user_name, up.avatar_url,
+             (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.post_id) as likes_count,
+             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.post_id) as comments_count,
+             (SELECT COUNT(*) FROM reposts r WHERE r.post_id = p.post_id) as reposts_count
+      FROM posts p
+      JOIN users u ON p.user_id = u.user_id
+      JOIN user_profiles up ON u.user_id = up.user_id
+      ORDER BY (
+        (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.post_id) +
+        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.post_id) +
+        (SELECT COUNT(*) FROM reposts r WHERE r.post_id = p.post_id)
+      ) DESC
+      LIMIT 50
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+router.post('/:postId/like', authenticateJWT, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.user_id;
+
+    const existingLike = await req.app.locals.db.query(
+      'SELECT * FROM likes WHERE post_id = $1 AND user_id = $2',
+      [postId, userId]
+    );
+
+    if (existingLike.rows.length > 0) {
+      await req.app.locals.db.query(
+        'DELETE FROM likes WHERE post_id = $1 AND user_id = $2',
+        [postId, userId]
+      );
+      res.json({ message: 'Post unliked successfully' });
+    } else {
+      await req.app.locals.db.query(
+        'INSERT INTO likes (post_id, user_id) VALUES ($1, $2)',
+        [postId, userId]
+      );
+      res.json({ message: 'Post liked successfully' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/:postId/repost', authenticateJWT, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.user_id;
+
+    const client = await req.app.locals.db.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Check if the repost already exists
+      const { rows } = await client.query(
+        'SELECT * FROM reposts WHERE post_id = $1 AND user_id = $2',
+        [postId, userId]
+      );
+
+      if (rows.length > 0) {
+        // If the repost exists, delete it (undo repost)
+        await client.query(
+          'DELETE FROM reposts WHERE post_id = $1 AND user_id = $2',
+          [postId, userId]
+        );
+        await client.query('COMMIT');
+        res.json({ message: 'Repost removed successfully' });
+      } else {
+        // If the repost doesn't exist, create it
+        await client.query(
+          'INSERT INTO reposts (post_id, user_id) VALUES ($1, $2)',
+          [postId, userId]
+        );
+        await client.query('COMMIT');
+        res.json({ message: 'Post reposted successfully' });
+      }
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+router.get('/:postId/like/status', authenticateJWT, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.user_id;
+
+    const { rows } = await req.app.locals.db.query(
+      'SELECT * FROM likes WHERE post_id = $1 AND user_id = $2',
+      [postId, userId]
+    );
+
+    res.json({ isLiked: rows.length > 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/:postId/repost/status', authenticateJWT, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.user_id;
+
+    const { rows } = await req.app.locals.db.query(
+      'SELECT * FROM reposts WHERE post_id = $1 AND user_id = $2',
+      [postId, userId]
+    );
+
+    res.json({ isReposted: rows.length > 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+module.exports = router;
 
 module.exports = router;

@@ -1,19 +1,15 @@
+const express = require("express");
+const cors = require("cors");
+const config = require("./config/config");
 const app = require("./app");
 const { Pool } = require("pg");
-const config = require("./config/config");
+const path = require("path");
+
 
 const port = config.port || 3000;
 
-// Database connection
-const pool = new Pool({
-  user: config.db.user,
-  host: config.db.host,
-  database: config.db.database,
-  password: config.db.password,
-  port: config.db.port,
-});
+const pool = new Pool(config.db);
 
-// Test database connection
 pool.query("SELECT NOW()", (err, res) => {
   if (err) {
     console.error("Error connecting to the database", err);
@@ -22,11 +18,27 @@ pool.query("SELECT NOW()", (err, res) => {
   }
 });
 
-// Make the pool available globally
 app.locals.db = pool;
 
-// Start the server
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true
+}));
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, path, stat) => {
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
+
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-  console.log(`Swagger UI is available at http://localhost:${port}/api-docs`);
+  console.log(`Server running on port ${port}`);
+  console.log(`Swagger UI: http://localhost:${port}/api-docs`);
+});
+
+console.log("Registered routes:");
+app._router.stack.forEach(function(r){
+  if (r.route && r.route.path){
+    console.log(r.route.path)
+  }
 });
